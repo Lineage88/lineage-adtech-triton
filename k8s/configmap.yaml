@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ctr-secrets
+  namespace: ctr-inference
+type: Opaque
+stringData:
+  api-key: "change-me-to-secure-key-in-production"
+  triton-auth-token: "optional-triton-auth"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ctr-config
+  namespace: ctr-inference
+data:
+  TRITON_HOST: "triton-server"
+  TRITON_PORT: "8001"
+  TRITON_MODEL_NAME: "ctr_model"
+  TRITON_MODEL_VERSION: "1"
+  TRITON_TIMEOUT_MS: "60000"
+  APP_HOST: "0.0.0.0"
+  APP_PORT: "8000"
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  EXPECTED_FEATURE_DIM: "20"
+  MAX_FEATURE_DIM: "100"
+  ENABLE_CORS: "false"
+  ENABLE_METRICS: "true"
+  METRICS_PORT: "8001"

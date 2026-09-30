@@ -1,0 +1,257 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ctr-inference-app
+  namespace: ctr-inference
+  labels:
+    app: ctr-inference-app
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ctr-inference-app
+  template:
+    metadata:
+      labels:
+        app: ctr-inference-app
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: ctr-inference-app
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: inference-app
+          image: lineage88/lineage-adtech-triton:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: metrics
+              containerPort: 8001
+              protocol: TCP
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ctr-secrets
+                  key: api-key
+            - name: TRITON_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: TRITON_HOST
+            - name: TRITON_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: TRITON_PORT
+            - name: TRITON_MODEL_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: TRITON_MODEL_NAME
+            - name: TRITON_MODEL_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: TRITON_MODEL_VERSION
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: APP_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: LOG_LEVEL
+            - name: ENABLE_METRICS
+              valueFrom:
+                configMapKeyRef:
+                  name: ctr-config
+                  key: ENABLE_METRICS
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - ctr-inference-app
+                topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triton-server
+  namespace: ctr-inference
+  labels:
+    app: triton-server
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: triton-server
+  template:
+    metadata:
+      labels:
+        app: triton-server
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8002"
+    spec:
+      serviceAccountName: triton-server
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: model-downloader
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - "echo 'Model repository will be mounted or downloaded here' && mkdir -p /models/ctr_model/1"
+          volumeMounts:
+            - name: model-repo
+              mountPath: /models
+      containers:
+        - name: triton
+          image: nvcr.io/nvidia/tritonserver:24.03-py3
+          imagePullPolicy: IfNotPresent
+          command:
+            - tritonserver
+            - "--model-repository=/models"
+            - "--grpc-port=8001"
+            - "--http-port=8000"
+            - "--metrics-port=8002"
+            - "--strict-model-config=false"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: grpc
+              containerPort: 8001
+              protocol: TCP
+            - name: metrics
+              containerPort: 8002
+              protocol: TCP
+          env:
+            - name: TRITON_DOCKER_SHAREDMEM_SIZE
+              value: "1073741824"  # 1GB
+          securityContext:
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - "http://localhost:8000/v2/health/live"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - "http://localhost:8000/v2/health/ready"
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: model-repo
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: model-repo
+          emptyDir:
+            sizeLimit: 5Gi
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+      terminationGracePeriodSeconds: 30

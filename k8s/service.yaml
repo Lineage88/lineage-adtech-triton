@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ctr-inference-app
+  namespace: ctr-inference
+  labels:
+    app: ctr-inference-app
+spec:
+  type: ClusterIP
+  selector:
+    app: ctr-inference-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 8001
+      targetPort: metrics
+      protocol: TCP
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton-server
+  namespace: ctr-inference
+  labels:
+    app: triton-server
+spec:
+  type: ClusterIP
+  selector:
+    app: triton-server
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+    - name: grpc
+      port: 8001
+      targetPort: grpc
+      protocol: TCP
+    - name: metrics
+      port: 8002
+      targetPort: metrics
+      protocol: TCP
+  sessionAffinity: None

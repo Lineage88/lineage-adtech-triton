@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ctr-inference-app
+  namespace: ctr-inference
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ctr-inference-app
