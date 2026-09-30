@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data
+*.csv
+*.parquet
+data/
+
+# Models (keep ONNX, ignore large checkpoints)
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
