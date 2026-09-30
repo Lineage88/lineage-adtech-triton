@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ctr-inference.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ctr-inference.labels" . | nindent 4 }}
+    component: app
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "ctr-inference.selectorLabels" . | nindent 6 }}
+      component: app
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "ctr-inference.selectorLabels" . | nindent 8 }}
+        component: app
+    spec:
+      serviceAccountName: {{ include "ctr-inference.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: metrics
+              containerPort: 8001
+              protocol: TCP
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-secrets
+                  key: api-key
+            - name: TRITON_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: TRITON_HOST
+            - name: TRITON_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: TRITON_PORT
+            - name: TRITON_MODEL_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: TRITON_MODEL_NAME
+            - name: TRITON_MODEL_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: TRITON_MODEL_VERSION
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: APP_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: LOG_LEVEL
+            - name: ENABLE_METRICS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ctr-inference.fullname" . }}-config
+                  key: ENABLE_METRICS
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- with .Values.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}

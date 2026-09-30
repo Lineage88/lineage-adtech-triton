@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ctr-inference.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ctr-inference.labels" . | nindent 4 }}
+data:
+  TRITON_HOST: {{ .Values.config.triton.host | quote }}
+  TRITON_PORT: {{ .Values.config.triton.port | quote }}
+  TRITON_MODEL_NAME: {{ .Values.config.triton.modelName | quote }}
+  TRITON_MODEL_VERSION: {{ .Values.config.triton.modelVersion | quote }}
+  TRITON_TIMEOUT_MS: {{ .Values.config.triton.timeoutMs | quote }}
+  APP_HOST: {{ .Values.config.app.host | quote }}
+  APP_PORT: {{ .Values.config.app.port | quote }}
+  APP_ENV: {{ .Values.config.app.env | quote }}
+  LOG_LEVEL: {{ .Values.config.logging.level | quote }}
+  EXPECTED_FEATURE_DIM: {{ .Values.config.features.expectedDim | quote }}
+  MAX_FEATURE_DIM: {{ .Values.config.features.maxDim | quote }}
+  ENABLE_CORS: {{ .Values.config.cors.enabled | quote }}
+  ENABLE_METRICS: {{ .Values.config.metrics.enabled | quote }}
+  METRICS_PORT: {{ .Values.config.metrics.port | quote }}

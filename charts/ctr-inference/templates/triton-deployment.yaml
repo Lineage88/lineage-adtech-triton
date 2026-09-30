@@ -1,0 +1,92 @@
+{{- if .Values.triton.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ctr-inference.fullname" . }}-triton
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ctr-inference.labels" . | nindent 4 }}
+    component: triton
+spec:
+  replicas: {{ .Values.triton.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ctr-inference.selectorLabels" . | nindent 6 }}
+      component: triton
+  template:
+    metadata:
+      labels:
+        {{- include "ctr-inference.selectorLabels" . | nindent 8 }}
+        component: triton
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8002"
+    spec:
+      serviceAccountName: {{ include "ctr-inference.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: triton
+          image: "{{ .Values.triton.image.repository }}:{{ .Values.triton.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - tritonserver
+            - "--model-repository=/models"
+            - "--grpc-port=8001"
+            - "--http-port=8000"
+            - "--metrics-port=8002"
+            - "--strict-model-config=false"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: grpc
+              containerPort: 8001
+              protocol: TCP
+            - name: metrics
+              containerPort: 8002
+              protocol: TCP
+          env:
+            - name: TRITON_DOCKER_SHAREDMEM_SIZE
+              value: "1073741824"
+          {{- with .Values.triton.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - "http://localhost:8000/v2/health/live"
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - "http://localhost:8000/v2/health/ready"
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          volumeMounts:
+            - name: model-repo
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: model-repo
+          emptyDir:
+            sizeLimit: {{ .Values.triton.modelRepository.size }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.triton.sharedMemory.size }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+{{- end }}
